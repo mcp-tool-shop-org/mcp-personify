@@ -1,0 +1,32 @@
+# Unreal Engine
+Binaries/
+DerivedDataCache/
+Intermediate/
+Saved/
+Build/
+
+# OS
+.DS_Store
+Thumbs.db
+*.swp
+*~
+
+# IDE
+.vs/
+.vscode/
+.idea/
+*.sln
+*.suo
+*.vcxproj*
+
+# Node modules (TTS bridge)
+node_modules/
+
+# TTS output cache
+.tts-output/
+
+# Compiled shaders
+*.ushader_cache
+
+# Crash reports
+CrashReportClient/
