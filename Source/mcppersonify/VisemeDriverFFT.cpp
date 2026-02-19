@@ -58,7 +58,7 @@ void UVisemeDriverFFT::TickComponent(float DeltaTime, ELevelTick TickType,
 
 		// Simulate band energies from envelope with phase-shifted sine modulation
 		// This produces visually plausible mouth movement until we add real FFT
-		Envelope = ActiveSource->GetPlaybackPercentage() > 0.f ? 0.6f : 0.f;
+		Envelope = ActiveSource->IsPlaying() ? 0.6f : 0.f;
 
 		// Use time-varying weights to create mouth movement variety
 		float RawAa = Envelope * (0.4f + 0.3f * FMath::Sin(Time * 8.7f));

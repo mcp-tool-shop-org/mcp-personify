@@ -44,7 +44,8 @@ protected:
 private:
 	UPROPERTY() UAudioComponent* AudioComp = nullptr;
 
-	USoundWave* LoadWavFromFile(const FString& FilePath);
+	void PlayWav(const FString& FilePath);
+	void PlayOgg(const FString& FilePath);
 
 	UFUNCTION()
 	void HandlePlaybackFinished();

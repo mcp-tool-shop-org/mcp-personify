@@ -3,7 +3,6 @@
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
 #include "Kismet/GameplayStatics.h"
-#include "AudioDecompress.h"
 
 UTtsAudioPlayer::UTtsAudioPlayer()
 {
@@ -56,63 +55,114 @@ void UTtsAudioPlayer::PlayFromPath(const FString& FilePath)
 
 	UE_LOG(LogTemp, Log, TEXT("[TtsAudioPlayer] Loading: %s"), *NormalizedPath);
 
-	// Load raw bytes
-	TArray<uint8> RawBytes;
-	if (!FFileHelper::LoadFileToArray(RawBytes, *NormalizedPath))
-	{
-		UE_LOG(LogTemp, Error, TEXT("[TtsAudioPlayer] Failed to read: %s"), *NormalizedPath);
-		return;
-	}
-
-	// Create a SoundWave from raw file data
-	USoundWave* SoundWave = NewObject<USoundWave>();
-	SoundWave->RawData.Lock(LOCK_READ_WRITE);
-	void* LockedData = SoundWave->RawData.Realloc(RawBytes.Num());
-	FMemory::Memcpy(LockedData, RawBytes.GetData(), RawBytes.Num());
-	SoundWave->RawData.Unlock();
-
-	// Detect format from extension
 	FString Extension = FPaths::GetExtension(NormalizedPath).ToLower();
+
 	if (Extension == TEXT("wav"))
 	{
-		// Parse WAV header for metadata
-		if (RawBytes.Num() >= 44)
-		{
-			int32 NumChannels = RawBytes[22] | (RawBytes[23] << 8);
-			int32 SRate = RawBytes[24] | (RawBytes[25] << 8) | (RawBytes[26] << 16) | (RawBytes[27] << 24);
-			int32 BitsPerSample = RawBytes[34] | (RawBytes[35] << 8);
-
-			SoundWave->SetSampleRate(SRate);
-			SoundWave->NumChannels = NumChannels;
-			SoundWave->RawPCMDataSize = RawBytes.Num() - 44;
-			SoundWave->Duration = (float)SoundWave->RawPCMDataSize / (SRate * NumChannels * (BitsPerSample / 8));
-		}
-		SoundWave->SetImportedSampleRate(24000);
-		SoundWave->SetSampleRate(24000);
-		SoundWave->NumChannels = 1;
+		PlayWav(NormalizedPath);
 	}
 	else if (Extension == TEXT("ogg"))
 	{
-		// OGG Vorbis — let UE decode it
-		SoundWave->SetImportedSampleRate(24000);
-		SoundWave->SetSampleRate(24000);
-		SoundWave->NumChannels = 1;
-		SoundWave->bProcedural = false;
+		PlayOgg(NormalizedPath);
 	}
 	else
 	{
 		UE_LOG(LogTemp, Warning, TEXT("[TtsAudioPlayer] Unsupported format: %s"), *Extension);
+	}
+}
+
+void UTtsAudioPlayer::PlayWav(const FString& FilePath)
+{
+	// Load raw WAV file bytes
+	TArray<uint8> RawBytes;
+	if (!FFileHelper::LoadFileToArray(RawBytes, *FilePath))
+	{
+		UE_LOG(LogTemp, Error, TEXT("[TtsAudioPlayer] Failed to read: %s"), *FilePath);
 		return;
 	}
 
+	if (RawBytes.Num() < 44)
+	{
+		UE_LOG(LogTemp, Error, TEXT("[TtsAudioPlayer] WAV too small: %d bytes"), RawBytes.Num());
+		return;
+	}
+
+	// Parse WAV header
+	int32 NumChannels = RawBytes[22] | (RawBytes[23] << 8);
+	int32 SampleRate = RawBytes[24] | (RawBytes[25] << 8) | (RawBytes[26] << 16) | (RawBytes[27] << 24);
+	int32 BitsPerSample = RawBytes[34] | (RawBytes[35] << 8);
+
+	// Find "data" chunk
+	int32 DataOffset = 44; // Standard WAV
+	int32 DataSize = RawBytes.Num() - DataOffset;
+
+	// Search for "data" marker in case of non-standard headers
+	for (int32 i = 12; i < FMath::Min(RawBytes.Num() - 8, 200); i++)
+	{
+		if (RawBytes[i] == 'd' && RawBytes[i+1] == 'a' && RawBytes[i+2] == 't' && RawBytes[i+3] == 'a')
+		{
+			DataSize = RawBytes[i+4] | (RawBytes[i+5] << 8) | (RawBytes[i+6] << 16) | (RawBytes[i+7] << 24);
+			DataOffset = i + 8;
+			break;
+		}
+	}
+
+	if (DataOffset + DataSize > RawBytes.Num())
+	{
+		DataSize = RawBytes.Num() - DataOffset;
+	}
+
+	// Use SoundWaveProcedural — feed raw PCM data directly
+	USoundWaveProcedural* SoundWave = NewObject<USoundWaveProcedural>();
+	SoundWave->SetSampleRate(SampleRate);
+	SoundWave->NumChannels = NumChannels;
+	SoundWave->Duration = (float)DataSize / (SampleRate * NumChannels * (BitsPerSample / 8));
 	SoundWave->SoundGroup = ESoundGroup::SOUNDGROUP_Voice;
 	SoundWave->bLooping = false;
+
+	// Queue the raw PCM audio data
+	SoundWave->QueueAudio(RawBytes.GetData() + DataOffset, DataSize);
 
 	AudioComp->SetSound(SoundWave);
 	AudioComp->Play();
 
-	UE_LOG(LogTemp, Log, TEXT("[TtsAudioPlayer] Playing: %s (%.1fs)"), *FPaths::GetCleanFilename(NormalizedPath), SoundWave->Duration);
+	UE_LOG(LogTemp, Log, TEXT("[TtsAudioPlayer] Playing WAV: %s (%.1fs, %dHz, %dch)"),
+		*FPaths::GetCleanFilename(FilePath), SoundWave->Duration, SampleRate, NumChannels);
 	OnPlaybackStarted.Broadcast(AudioComp);
+}
+
+void UTtsAudioPlayer::PlayOgg(const FString& FilePath)
+{
+	// For OGG files, use RuntimeAudioImporter or decode manually.
+	// As a simple approach, we use UGameplayStatics::SpawnSound2D with
+	// a SoundWave created from the OGG data.
+	//
+	// UE5's built-in OGG support works through the import pipeline,
+	// but runtime loading of OGG requires either:
+	// 1. Converting to WAV first (bridge can output WAV)
+	// 2. Using a runtime audio import plugin
+	// 3. Using USoundWaveProcedural with decoded PCM
+	//
+	// For now, log a message suggesting WAV format from the bridge.
+
+	UE_LOG(LogTemp, Warning, TEXT("[TtsAudioPlayer] OGG runtime loading not yet implemented. "
+		"Set TTS_BRIDGE_FORMAT=wav environment variable for the bridge, or use WAV output."));
+
+	// Try loading as WAV anyway in case the extension is wrong
+	// (some TTS engines output WAV with .ogg extension)
+	TArray<uint8> RawBytes;
+	if (FFileHelper::LoadFileToArray(RawBytes, *FilePath) && RawBytes.Num() >= 4)
+	{
+		// Check for RIFF header (WAV)
+		if (RawBytes[0] == 'R' && RawBytes[1] == 'I' && RawBytes[2] == 'F' && RawBytes[3] == 'F')
+		{
+			UE_LOG(LogTemp, Log, TEXT("[TtsAudioPlayer] File has RIFF header, treating as WAV"));
+			PlayWav(FilePath);
+			return;
+		}
+	}
+
+	UE_LOG(LogTemp, Error, TEXT("[TtsAudioPlayer] Cannot play OGG: %s"), *FilePath);
 }
 
 void UTtsAudioPlayer::Stop()
