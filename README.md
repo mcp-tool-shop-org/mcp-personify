@@ -1,4 +1,4 @@
-# mcppersonify
+# mcp-personify
 
 > **Prototype** — VRM avatar with real-time TTS lipsync and expression mapping in Unreal Engine 5
 
