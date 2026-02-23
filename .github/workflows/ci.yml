@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  push:
+    paths:
+      - "Source/mcppersonify/**"
+      - "tools/tts-bridge/**"
+      - ".github/workflows/**"
+  pull_request:
+    paths:
+      - "Source/mcppersonify/**"
+      - "tools/tts-bridge/**"
+      - ".github/workflows/**"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  cpp-static-analysis:
+    name: C++ Static Analysis
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install cppcheck
+        run: sudo apt-get update && sudo apt-get install -y cppcheck
+
+      - name: Run cppcheck
+        run: |
+          cppcheck \
+            --enable=warning,style,performance \
+            --error-exitcode=1 \
+            --suppress=missingInclude \
+            --suppress=unusedFunction \
+            --inline-suppr \
+            Source/mcppersonify/
+
+  bridge-check:
+    name: Bridge Lint & Syntax
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install dependencies
+        working-directory: tools/tts-bridge
+        run: npm ci
+
+      - name: Syntax check
+        working-directory: tools/tts-bridge
+        run: node --check bridge.mjs
+
+      - name: Lint
+        working-directory: tools/tts-bridge
+        run: npx eslint bridge.mjs

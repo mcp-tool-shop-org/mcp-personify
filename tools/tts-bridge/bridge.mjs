@@ -179,7 +179,7 @@ async function handleMessage(ws, msg) {
         const pushArgs = { text: msg.text || "cue", priority: msg.priority || "med" };
         if (msg.reason) pushArgs.reason = msg.reason;
         if (msg.tags) pushArgs.tags = msg.tags;
-        if (msg.emotion || msg.intensity != null) pushArgs.meta = { emotion: msg.emotion || "neutral", intensity: msg.intensity ?? 0.5 };
+        if (msg.emotion || msg.intensity !== null) pushArgs.meta = { emotion: msg.emotion || "neutral", intensity: msg.intensity ?? 0.5 };
         const result = await callAsideTool("aside.push", pushArgs);
         if (result.ok && result.item) broadcast({ type: "aside.item", ...result.item });
       } else if (action === "inbox") {
