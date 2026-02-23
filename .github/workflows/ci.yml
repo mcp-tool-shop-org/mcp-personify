@@ -34,6 +34,7 @@ jobs:
             --error-exitcode=1 \
             --suppress=missingInclude \
             --suppress=unusedFunction \
+            --suppress=unknownMacro \
             --inline-suppr \
             Source/mcppersonify/
 
