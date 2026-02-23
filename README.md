@@ -1,4 +1,6 @@
-# mcp-personify
+<p align="center">
+  <img src="assets/logo.png" alt="MCP Personify" width="360" />
+</p>
 
 > **Prototype** — VRM avatar with real-time TTS lipsync and expression mapping in Unreal Engine 5
 
