@@ -30,3 +30,4 @@ node_modules/
 
 # Crash reports
 CrashReportClient/
+site/.astro/
